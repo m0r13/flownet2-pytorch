@@ -293,6 +293,8 @@ class FlowNet2SD(FlowNetSD.FlowNetSD):
         self.rgb_max = args.rgb_max
         self.div_flow = div_flow
 
+        self.intermediate = None
+
     def forward(self, inputs):
         rgb_mean = inputs.contiguous().view(inputs.size()[:2]+(-1,)).mean(dim=-1).view(inputs.size()[:2] + (1,1,1,))
         x = (inputs - rgb_mean) / self.rgb_max

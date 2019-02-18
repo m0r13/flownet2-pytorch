@@ -128,6 +128,7 @@ if __name__ == '__main__':
     with tools.TimerBlock("Initializing Datasets") as block:
         args.effective_batch_size = args.batch_size * args.number_gpus
         args.effective_inference_batch_size = args.inference_batch_size * args.number_gpus
+        args.effective_inference_batch_size = 1
         args.effective_number_workers = args.number_workers * args.number_gpus
         gpuargs = {'num_workers': args.effective_number_workers, 
                    'pin_memory': True, 
@@ -209,7 +210,11 @@ if __name__ == '__main__':
             if not args.inference:
                 args.start_epoch = checkpoint['epoch']
             best_err = checkpoint['best_EPE']
-            model_and_loss.module.model.load_state_dict(checkpoint['state_dict'])
+            state_dict = checkpoint['state_dict']
+            fixed_state_dict = {}
+            for key in list(state_dict.keys()):
+                fixed_state_dict["model." + key] = state_dict[key]
+            model_and_loss.module.load_state_dict(fixed_state_dict)
             block.log("Loaded checkpoint '{}' (at epoch {})".format(args.resume, checkpoint['epoch']))
 
         elif args.resume and args.inference:
@@ -261,7 +266,7 @@ if __name__ == '__main__':
 
             data, target = [Variable(d) for d in data], [Variable(t) for t in target]
             if args.cuda and args.number_gpus == 1:
-                data, target = [d.cuda(async=True) for d in data], [t.cuda(async=True) for t in target]
+                data, target = [d.cuda(**{"async" : True}) for d in data], [t.cuda(**{"async" : True}) for t in target]
 
             optimizer.zero_grad() if not is_validate else None
             losses = model(data[0], target[0])
@@ -339,25 +344,51 @@ if __name__ == '__main__':
 
     # Reusable function for inference
     def inference(args, epoch, data_loader, model, offset=0):
-
         model.eval()
-        
+
+        export_onnx = False
+
+        if export_onnx:
+            import torch.onnx
+            dummy_input = Variable(torch.randn(1, 3, 2, 384, 1024)).cuda()
+            dummy_output = Variable(torch.randn(1, 3, 2, 384, 1024)).cuda()
+            ### module is wrapper DataParallel, actual model is in it
+            ### (DataParallel not supported by ONNX)
+            torch.onnx.export(model.cuda().module, (dummy_input, dummy_output), "model.onnx")
+            return
+
         if args.save_flow or args.render_validation:
             flow_folder = "{}/inference/{}.epoch-{}-flow-field".format(args.save,args.name.replace('/', '.'),epoch)
+            #flow_folder = args.save
             if not os.path.exists(flow_folder):
                 os.makedirs(flow_folder)
 
-        
+
         args.inference_n_batches = np.inf if args.inference_n_batches < 0 else args.inference_n_batches
 
         progress = tqdm(data_loader, ncols=100, total=np.minimum(len(data_loader), args.inference_n_batches), desc='Inferencing ', 
-            leave=True, position=offset)
+            leave=True, position=offset, disable=False)
+
+        only_one = True
+        export_intermediate = True
+        export_rawflo = True
 
         statistics = []
         total_loss = 0
         for batch_idx, (data, target) in enumerate(progress):
+            if  only_one and batch_idx != 70:
+                continue
             if args.cuda:
-                data, target = [d.cuda(async=True) for d in data], [t.cuda(async=True) for t in target]
+                data, target = [d.cuda(**{"async" : True}) for d in data], [t.cuda(**{"async" : True}) for t in target]
+            print("Data shape:", len(data))
+            _xdata = data[0].cpu().numpy()
+            if batch_idx == 0:
+                print()
+                print("===")
+                print("Input shape/dtype: %s %s" % (str(_xdata.shape), _xdata.dtype))
+                print("===")
+                print()
+            _xdata.tofile(join(flow_folder, "%06d.rawin" % (batch_idx)))
             data, target = [Variable(d) for d in data], [Variable(t) for t in target]
 
             # when ground-truth flows are not available for inference_dataset, 
@@ -365,6 +396,17 @@ if __name__ == '__main__':
             # depending on the type of loss norm passed in
             with torch.no_grad():
                 losses, output = model(data[0], target[0], inference=True)
+            if export_intermediate:
+                intermediate = model.module.model.intermediate
+                #if intermediate is not None and batch_idx == 70:
+                if intermediate is not None:
+                    intermediate = intermediate.cpu().numpy()
+                    print("")
+                    print("====")
+                    print("Intermediate shape: %s" % str(intermediate.shape))
+                    print("====")
+                    print("")
+                    intermediate.tofile(join(flow_folder, "%06d.rawintermediate" % (batch_idx)))
 
             losses = [torch.mean(loss_value) for loss_value in losses] 
             loss_val = losses[0] # Collect first loss for weight update
@@ -378,12 +420,23 @@ if __name__ == '__main__':
             # import IPython; IPython.embed()
             if args.save_flow or args.render_validation:
                 for i in range(args.inference_batch_size):
-                    _pflow = output[i].data.cpu().numpy().transpose(1, 2, 0)
+                    _pflow = output[i].data.cpu().numpy()
+                    if export_rawflo:
+                        _pflow.tofile(join(flow_folder, "%06d.rawout" % (batch_idx * args.inference_batch_size + i)))
+                        #if batch_idx == 0:
+                        #    print()
+                        #    print("===")
+                        #    print("Output shape/dtype: %s %s" % (str(_pflow.shape), _pflow.dtype))
+                        #    print("===")
+                        #    print()
+                    _pflow = _pflow.transpose(1, 2, 0)
                     flow_utils.writeFlow( join(flow_folder, '%06d.flo'%(batch_idx * args.inference_batch_size + i)),  _pflow)
 
             progress.set_description('Inference Averages for Epoch {}: '.format(epoch) + tools.format_dictionary_of_losses(loss_labels, np.array(statistics).mean(axis=0)))
             progress.update(1)
 
+            if only_one:
+                break
             if batch_idx == (args.inference_n_batches - 1):
                 break
 
