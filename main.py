@@ -346,7 +346,7 @@ if __name__ == '__main__':
     def inference(args, epoch, data_loader, model, offset=0):
         model.eval()
 
-        export_onnx = True
+        export_onnx = False
 
         import torch.onnx
         if export_onnx:

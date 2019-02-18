@@ -29,6 +29,9 @@ class NoLoss(nn.Module):
     def __init__(self, args):
         super(NoLoss, self).__init__()
 
+        self.loss = None
+        self.loss_labels = []
+
     def forward(self, output, target):
         return output
 
