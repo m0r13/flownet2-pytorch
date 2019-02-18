@@ -61,7 +61,7 @@ if __name__ == '__main__':
 
     tools.add_arguments_for_module(parser, models, argument_for_class='model', default='FlowNet2')
 
-    tools.add_arguments_for_module(parser, losses, argument_for_class='loss', default='L1Loss')
+    tools.add_arguments_for_module(parser, losses, argument_for_class='loss', default='NoLoss')
 
     tools.add_arguments_for_module(parser, torch.optim, argument_for_class='optimizer', default='Adam', skip_params=['params'])
     
@@ -346,10 +346,10 @@ if __name__ == '__main__':
     def inference(args, epoch, data_loader, model, offset=0):
         model.eval()
 
-        export_onnx = False
+        export_onnx = True
 
+        import torch.onnx
         if export_onnx:
-            import torch.onnx
             dummy_input = Variable(torch.randn(1, 3, 2, 384, 1024)).cuda()
             dummy_output = Variable(torch.randn(1, 3, 2, 384, 1024)).cuda()
             ### module is wrapper DataParallel, actual model is in it

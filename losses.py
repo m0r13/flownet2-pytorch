@@ -25,6 +25,13 @@ class L2(nn.Module):
         lossvalue = torch.norm(output-target,p=2,dim=1).mean()
         return lossvalue
 
+class NoLoss(nn.Module):
+    def __init__(self, args):
+        super(NoLoss, self).__init__()
+
+    def forward(self, output, target):
+        return output
+
 class L1Loss(nn.Module):
     def __init__(self, args):
         super(L1Loss, self).__init__()
