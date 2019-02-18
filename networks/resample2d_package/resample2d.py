@@ -5,6 +5,11 @@ import resample2d_cuda
 class Resample2dFunction(Function):
 
     @staticmethod
+    def symbolic(g, input1, input2, *args):
+        kernel_size, = args
+        return g.op("Resample2dFunction", input1, input2, kernel_size_i=kernel_size)
+
+    @staticmethod
     def forward(ctx, input1, input2, kernel_size=1):
         assert input1.is_contiguous()
         assert input2.is_contiguous()

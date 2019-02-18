@@ -5,6 +5,11 @@ import channelnorm_cuda
 class ChannelNormFunction(Function):
 
     @staticmethod
+    def symbolic(g, input, *args):
+        norm_deg, = args
+        return g.op("ChannelNormFunction", input, norm_deg_i=norm_deg)
+
+    @staticmethod
     def forward(ctx, input1, norm_deg=2):
         assert input1.is_contiguous()
         b, _, h, w = input1.size()

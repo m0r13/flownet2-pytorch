@@ -178,6 +178,8 @@ class FlowNet2C(FlowNetC.FlowNetC):
         super(FlowNet2C,self).__init__(args, batchNorm=batchNorm, div_flow=20)
         self.rgb_max = args.rgb_max
 
+        self.intermediate = None
+
     def forward(self, inputs):
         rgb_mean = inputs.contiguous().view(inputs.size()[:2]+(-1,)).mean(dim=-1).view(inputs.size()[:2] + (1,1,1,))
         
@@ -246,6 +248,8 @@ class FlowNet2S(FlowNetS.FlowNetS):
         super(FlowNet2S,self).__init__(args, input_channels = 6, batchNorm=batchNorm)
         self.rgb_max = args.rgb_max
         self.div_flow = div_flow
+
+        self.intermediate = None
         
     def forward(self, inputs):
         rgb_mean = inputs.contiguous().view(inputs.size()[:2]+(-1,)).mean(dim=-1).view(inputs.size()[:2] + (1,1,1,))
